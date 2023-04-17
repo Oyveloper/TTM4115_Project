@@ -1,6 +1,5 @@
 import logging
 
-from class_manager.instructor.instructor_stm import InstructorSTM
 from class_manager.instructor.instructor_system import InstructorSystem
 
 def main():

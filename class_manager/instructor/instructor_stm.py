@@ -6,8 +6,6 @@ import json
 from class_manager.config import MQTT_BROKER, MQTT_PORT
 
 
-MQTT_TOPIC_INPUT = 'ttm4115/team3/command'
-MQTT_TOPIC_OUTPUT = 'ttm4115/team3/answer'
 
 class InstructorSTM:
     """

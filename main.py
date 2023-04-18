@@ -1,6 +1,7 @@
 import logging
 
 from class_manager.instructor.instructor_system import InstructorSystem
+from class_manager.student.student_system import StudentSystem
 
 def main():
     print("hello world")
@@ -14,7 +15,9 @@ def main():
     logger.addHandler(ch)
 
     instructor_system = InstructorSystem()
-    instructor_system.run()
+    student_system = StudentSystem()
+    student_system.run()
+    #instructor_system.run()
 
 if __name__ == "__main__":
     main()

@@ -7,8 +7,8 @@ from appJar import gui
 from class_manager.config import MQTT_BROKER, MQTT_PORT
 
 
-MQTT_TOPIC_INPUT = 'ttm4115/team3/command'
-MQTT_TOPIC_OUTPUT = 'ttm4115/team3/answer'
+GROUP_TOPIC_BASE = 'ttm4115/team3'
+MQTT_TOPIC_OUTPUT = 'ttm4115/team3'
 
 
 class StudentUISTM:
@@ -39,17 +39,32 @@ class StudentUISTM:
         self.mqtt_client.on_message = self.on_message
         # Connect to the broker
         self.mqtt_client.connect(MQTT_BROKER, MQTT_PORT)
-        self.mqtt_client.subscribe(MQTT_TOPIC_INPUT)
+        self.mqtt_client.subscribe(MQTT_TOPIC_OUTPUT)
         # start the internal loop to process MQTT messages
         self.mqtt_client.loop_start()
 
-
+        self.group_name = ""
 
         self.setup_stm()
 
+        
+
+
+    def setup_gui(self):
+        self.app = gui()
+        with self.app.frameStack("frames"):
+            for loop in range(2):
+                with self.app.frame():
+                    if loop == 1:
+                        self.setup_attendance_gui()
+                    else:
+                        self.setup_task_gui()
+        self.app.go()
+
 
     def show_task(self):
-        print("task")
+        print("entered task!")
+    
 
     def register_attendance(self):
         print("attendance")
@@ -58,11 +73,11 @@ class StudentUISTM:
 
         task = {
             'name': 'task',
-            'entry': 'show_task',
+            'entry': 'task_gui',
         }
         register_attendance = {
             'name': 'register_attendance',
-            'entry': 'attendance_registration',
+            'entry': 'attendance_gui',
         }
 
         t0 = {
@@ -105,13 +120,58 @@ class StudentUISTM:
 
         self.stm = stmpy.Machine(name='student_ui', transitions=[t0, t1, t2, t3, t4, t5, t6], states=[register_attendance, task], obj=self)
 
-    def create_gui(self):
-        self.app = gui()
-        def test():
-            self.stm.send("register_attendance")
-        self.app.addButton('Testing', test)
 
-        self.app.go()
+    def register_attendance(self):
+        print("trying to send")
+        self.stm.send("tasks")
+
+    def update_task(self, task: str):
+        self.app.setLabel("Task", task)
+
+
+    def setup_attendance_gui(self):
+        def task():
+            self.stm.send("task_view")
+            #self.mqtt_client.send(f"{GROUP_TOPIC_BASE}/{self.group_name}", json.dumps({"type": "task_view"}))
+
+        self.app.addEntry("Name")
+        self.app.addEntry("Group")
+        self.app.addButton('Attendance', self.register_attendance)
+
+    def setup_task_gui(self):
+        def next_task():
+            self.stm.send("next_task")
+            #self.mqtt_client.send(f"{GROUP_TOPIC_BASE}/{self.group_name}", json.dumps({"type": "next_task"}))
+
+        def previous_task():
+            self.stm.send("previous_task")
+            #self.mqtt_client.send(f"{GROUP_TOPIC_BASE}/{self.group_name}", json.dumps({"type": "previous_task"}))
+
+        def request_help():
+            self.stm.send("request_help")
+            #self.mqtt_client.send(f"{GROUP_TOPIC_BASE}/{self.group_name}", json.dumps({"type": "request_help"}))
+
+        def current_task():
+            self.stm.send("current_task")
+            #self.mqtt_client.send(f"{GROUP_TOPIC_BASE}/{self.group_name}", json.dumps({"type": "current_task"}))
+        
+        def go_back():
+            self.stm.send("return")
+        self.app.addLabel("Task", "noe greier")
+        self.app.addButton('Next', next_task)
+        self.app.addButton('Previous', previous_task)
+        self.app.addButton('Help', request_help)
+        self.app.addButton('Current', current_task)
+
+        self.app.addButton('back', go_back)
+
+
+    def attendance_gui(self):
+        self.app.selectFrame("frames", 1)
+
+    def task_gui(self):
+        self.app.selectFrame("frames", 0)
+
 
 
     def stop(self):

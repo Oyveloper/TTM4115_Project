@@ -3,6 +3,7 @@ import logging
 from threading import Thread
 import stmpy
 import json
+import tkinter
 from appJar import gui
 from class_manager.config import MQTT_BROKER, MQTT_PORT
 

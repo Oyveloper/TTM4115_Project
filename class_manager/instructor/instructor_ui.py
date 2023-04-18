@@ -54,15 +54,33 @@ class InstructorUISTM:
     def show_attendance(self):
         print("attendance")
 
+    def show_statistics(self):
+        print("statistics")
+
+    def show_group_overview(self):
+        print("group_overview")
+
+
     def setup_stm(self):
 
         menu = {
             'name': 'menu',
             'entry': 'show_menu',
         }
+
         display_attendance = {
             'name': 'display_attendance',
             'entry': 'show_attendance',
+        }
+
+        statistics = {
+            'name': 'statistics',
+            'entry': 'show_statistics',
+        }
+
+        group_overview = {
+            'name': 'group_overview',
+            'entry': 'show_group_overview',
         }
 
         t0 = {
@@ -76,7 +94,11 @@ class InstructorUISTM:
             'trigger': 'display_attendance',
         }
 
-        t2 = {'source': 'display_attendance', 'target': 'menu', 'trigger': 'return'}
+        t2 = {
+            'source': 'display_attendance',
+            'target': 'menu',
+            'trigger': 'return'
+            }
 
         t3 = {
             'source': 'menu',
@@ -90,14 +112,29 @@ class InstructorUISTM:
             'trigger': 'return',
         }
 
+        t5 = {
+            'source': 'menu',
+            'target': 'statistics',
+            'trigger': 'statistics',
+        }
 
-        self.stm = stmpy.Machine(name='faculty_ui', transitions=[t0, t1, t2, t3, t4], states=[menu, display_attendance], obj=self)
+        t6 = {
+            'source': 'statistics',
+            'target': 'menu',
+            'trigger': 'return'
+        }
+
+
+
+
+        self.stm = stmpy.Machine(name='faculty_ui', transitions=[t0, t1, t2, t3, t4, t5, t6], states=[menu, display_attendance, statistics, group_overview], obj=self)
 
     def create_gui(self):
         self.app = gui()
         def test():
             self.stm.send("display_attendance")
         self.app.addButton('Testing', test)
+        
 
         self.app.go()
 

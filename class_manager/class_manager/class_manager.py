@@ -33,15 +33,6 @@ class ClassManagerSTM:
         try:
             payload = json.loads(msg.payload.decode("utf-8"))
 
-            if msg.topic == self.attendance_topic:
-                if payload["type"] == "register":
-                    data = payload["data"]
-                    name = data["name"]
-                    code = data["code"]
-                    group = data["group"]
-
-                    self.register_attendance(name, group, code)
-
         except Exception as err:
             self._logger.error(
                 "Message sent to topic {} had no valid JSON. Message ignored. {}".format(
@@ -49,6 +40,18 @@ class ClassManagerSTM:
                 )
             )
             return
+
+        if msg.topic == self.attendance_topic:
+            if payload["type"] == "register":
+                data = payload["data"]
+                name = data["name"]
+                code = data["code"]
+                group = data["group"]
+
+                self.register_attendance(name, group, code)
+
+            elif payload["type"] == "get":
+                self.list_attendance()
 
     def __init__(self, code: str):
         """
@@ -87,6 +90,7 @@ class ClassManagerSTM:
 
         self.attendance_topic = f"{MQTT_BASE_TOPIC}/attendances"
         self.attendance_status_topic = f"{self.attendance_topic}/status"
+        self.attendance_list_topic = f"{self.attendance_topic}/list"
 
         self.mqtt_client.subscribe(self.progress_internals_topic)
         self.mqtt_client.subscribe(self.progress_topic)
@@ -110,24 +114,25 @@ class ClassManagerSTM:
         self.attendance = {}
         self.groups = {}
 
+    def send(self, topic: str, message: object):
+        self.mqtt_client.publish(topic, json.dumps(message))
+
     def register_attendance(self, name: str, group: str, code: str):
         """
         Register attendance for a student
         """
         if code != self.code:
             self._logger.error("Wrong code")
-            self.mqtt_client.publish(
+            self.send(
                 self.attendance_status_topic,
-                json.dumps(
-                    {
-                        "type": "status",
-                        "data": {
-                            "status": "error",
-                            "message": "Wrong code",
-                            "name": name,
-                        },
-                    }
-                ),
+                {
+                    "type": "status",
+                    "data": {
+                        "success": False,
+                        "message": "Wrong code",
+                        "name": name,
+                    },
+                },
             )
 
         self.attendance[name] = True
@@ -136,6 +141,11 @@ class ClassManagerSTM:
             self.groups[group] = {"members": [name]}
             self.setup_group(group)
 
+        self.send(
+            self.attendance_status_topic, {"type": "status", "data": {"status": "ok"}}
+        )
+        self.list_attendance()
+
     def setup_group(self, group_name: str):
         """
         Create a group stm
@@ -143,6 +153,16 @@ class ClassManagerSTM:
         group = GroupLogic(group_name, 10, self)
         self.groups[group_name] = group
         self.stm_driver.add_machine(group.stm)
+
+    def list_attendance(self):
+        """
+        Lists attendance to topic
+        """
+        result = []
+        for group in self.groups.items():
+            result.append(f"{group[0]}: {', '.join(group[1].members)}")
+
+        self.send(self.attendance_list_topic, {"type": "list", "data": result})
 
     def get_task(self, task_nbr: int):
         """

@@ -33,6 +33,7 @@ class GroupLogic:
         self.group_topic = f"{MQTT_BASE_TOPIC}/{self.name}"
         self.group_task_topic = f"{self.group_topic}/students"
         self.help_topic = f"{MQTT_BASE_TOPIC}/help"
+        self.internal_topic = f"{MQTT_BASE_TOPIC}/progress/internal"
 
         # subscribe to proper topic(s) of your choice
         self.mqtt_client.subscribe(group_topic)
@@ -46,21 +47,19 @@ class GroupLogic:
         self.stm_driver.start(keep_active=True)
         self._logger.debug('Component initialization finished')
 
-
-       
-
-
         self.setup_stm()
 
     def start_new_task(self):
         # calculate diff from last
-        time = time.time() - current_task_start_time
+        duration = time.time() - current_task_start_time
         if self.current_task in self.task_times:
-            self.task_times[current_task] += time
+            self.task_times[current_task] += duration
         else:
-            self.task_times[current_task] = time 
+            self.task_times[current_task] = duration 
 
         self.current_task_start_time = time.time()
+        message = 'type: progress_update'
+        self.component.mqtt_client.publish(self.internal_topic, message)
 
     def send(self, topic: str, message: obj):
         self.mqtt_client.publish(topic, json.dumps(message))
@@ -87,12 +86,13 @@ class GroupLogic:
         if message.topic == self.help_topic:
             group = payload.get("group")
             command = payload.get("type")
-            if group == self.name and command == 'request_help':
-                self.stm.send('ask_for_help')
-            if group == self.name and command == 'offer_help':
-                self.stm.send('offer_help')
-            
-
+            if group == self.name:
+                if command == 'request_help':
+                    self.stm.send('ask_for_help')
+                if command == 'offer_help':
+                    self.stm.send('offer_help')
+                if command == 'help_complete':
+                    self.stm.send('help_complete')
 
 
     def on_connect(self):
@@ -157,7 +157,7 @@ class GroupLogic:
             "team": self.name,
             "current_task": self.current_task
         }
-        self.mqtt_client.publish('ttm4115/team3/students', json.dumps(payload))
+        self.component.mqtt_client.publish('ttm4115/team3/students', json.dumps(payload))
 
     def next_task(self):
         send_current_task()

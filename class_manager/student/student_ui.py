@@ -24,9 +24,27 @@ class StudentUISTM:
         except Exception as err:
             self._logger.error('Message sent to topic {} had no valid JSON. Message ignored. {}'.format(msg.topic, err))
             return
+        #command = payload.get("command")
+        try:
+            if msg.topic == self.attendance_status_topic:
+                data = payload.get("data")
+                name = data.get("name")
+                success = data.get("success")
+                print("got status back")
+                print(success)
+                if name == self.name and success:
+                    # go to task
+                    self.subscribe_to_group()
+                    self.stm.send("tasks")
+            print(self.task_topic)
+            if msg.topic == self.task_topic:
+                print("got new task")
+                self.current_task_text = payload.get("current_task")
+                self.stm.send("current_task")
 
-        print(msg.payload)
-        pass
+            print(msg.payload)
+        except Exception as e:
+            print(e)
 
     def __init__(self):
         # get the logger object for the component
@@ -45,36 +63,63 @@ class StudentUISTM:
 
         self.attendance_topic = f"{MQTT_BASE_TOPIC}/attendance"
         self.attendance_status_topic = f"{MQTT_BASE_TOPIC}/attendance/status"
+        self.team_topic = ""
+        self.task_topic = ""
+        self.help_topic = f"{MQTT_BASE_TOPIC}/help"
+
 
         self.mqtt_client.subscribe(self.attendance_status_topic)
         # start the internal loop to process MQTT messages
         self.mqtt_client.loop_start()
 
         self.group_name = ""
+        self.name = ""
+        self.code = ""
 
+
+        self.current_task_text = "Loading ..."
         self.setup_stm()
 
         
+    def send(self, topic: str, message: object):
+        self.mqtt_client.publish(topic, json.dumps(message))
 
+    def subscribe_to_group(self):
+        self.team_topic = f"{MQTT_BASE_TOPIC}/{self.group_name}"
+        self.task_topic = f"{self.team_topic}/students"
+        self.mqtt_client.subscribe(self.team_topic)
+        self.mqtt_client.subscribe(self.task_topic)
+
+        self.request_group_task()
+
+    def request_group_task(self):
+        self.send(self.team_topic, {"type": "request"})
 
     def setup_gui(self):
         self.app = gui()
         with self.app.frameStack("frames"):
-            for loop in range(2):
+            for loop in range(3):
                 with self.app.frame():
-                    if loop == 1:
+                    if loop == 2:
+                        self.setup_help_gui()
+                    elif loop == 1:
                         self.setup_attendance_gui()
-                    else:
+                    elif loop == 0:
                         self.setup_task_gui()
+        self.attendance_gui()
         self.app.go()
+        
 
 
     def show_task(self):
         print("entered task!")
-    
+        
 
     def register_attendance(self):
         print("attendance")
+    
+    def help(self):
+        print("help")
 
     def setup_stm(self):
 
@@ -85,6 +130,10 @@ class StudentUISTM:
         register_attendance = {
             'name': 'register_attendance',
             'entry': 'attendance_gui',
+        }
+        help = {
+            'name' : 'help',
+            'entry' : 'help_gui',
         }
 
         t0 = {
@@ -124,31 +173,41 @@ class StudentUISTM:
             'trigger': 'click_next',
         }
 
+        t7 = {
+            'source': 'task',
+            'target': 'help',
+            'trigger': 'help'
+        }
 
-        self.stm = stmpy.Machine(name='student_ui', transitions=[t0, t1, t2, t3, t4, t5, t6], states=[register_attendance, task], obj=self)
+        t8 = {
+            'source': 'help',
+            'target': 'task',
+            'trigger': 'return'
+        }
+
+
+        self.stm = stmpy.Machine(name='student_ui', transitions=[t0, t1, t2, t3, t4, t5, t6, t7, t8], states=[register_attendance, task, help], obj=self)
 
 
     def register_attendance(self):
         print("trying to send")
-        name = self.app.getEntry("Name")
-        group = self.app.getEntry("Group")
-        code = self.app.getEntry("Code")
+        self.name = self.app.getEntry("Name")
+        self.group_name = self.app.getEntry("Group")
+        self.code = self.app.getEntry("Code")
 
-        print(name)
-        print(group)
-        print(code)
+        print(self.name)
+        print(self.group_name)
+        print(self.code)
         message = {
-            "name": name,
-            "group": group,
-            "code": code
+            "type": "register",
+            "data": {
+                "name": self.name,
+                "group": self.group_name,
+                "code": self.code,
+            }
+            
         }
         self.mqtt_client.publish(self.attendance_topic, json.dumps(message))
-
-        self.stm.send("tasks")
-
-    def update_task(self, task: str):
-        self.app.setLabel("Task", task)
-
 
     def setup_attendance_gui(self):
         def task():
@@ -157,38 +216,65 @@ class StudentUISTM:
 
         self.app.addLabel("Name")
         self.app.addEntry("Name")
+
         self.app.addLabel("Group")
         self.app.addEntry("Group")
+
         self.app.addLabel("Code")
         self.app.addEntry("Code")
+
         self.app.addButton('Attendance', self.register_attendance)
 
     def setup_task_gui(self):
         def next_task():
-            self.stm.send("next_task")
+            self.send(self.team_topic, {"type": "next_task"})
             #self.mqtt_client.send(f"{GROUP_TOPIC_BASE}/{self.group_name}", json.dumps({"type": "next_task"}))
 
         def previous_task():
-            self.stm.send("previous_task")
+            self.send(self.team_topic, {"type": "prev_task"})
             #self.mqtt_client.send(f"{GROUP_TOPIC_BASE}/{self.group_name}", json.dumps({"type": "previous_task"}))
 
-        def request_help():
-            self.stm.send("request_help")
-            #self.mqtt_client.send(f"{GROUP_TOPIC_BASE}/{self.group_name}", json.dumps({"type": "request_help"}))
+        """ def request_help():
+            self.send(self.help, {"type": "request_help", "group_name": self.group_name})
+            #self.mqtt_client.send(f"{GROUP_TOPIC_BASE}/{self.group_name}", json.dumps({"type": "request_help"})) """
 
-        def current_task():
-            self.stm.send("current_task")
-            #self.mqtt_client.send(f"{GROUP_TOPIC_BASE}/{self.group_name}", json.dumps({"type": "current_task"}))
         
         def go_back():
             self.stm.send("return")
-        self.app.addLabel("Task", "noe greier")
+
+        def help():
+            self.stm.send("help")
+        
+        self.app.addLabel("Task", self.current_task_text)
         self.app.addButton('Next', next_task)
         self.app.addButton('Previous', previous_task)
-        self.app.addButton('Help', request_help)
-        self.app.addButton('Current', current_task)
+        self.app.addButton('Request Help', help)
         self.app.addButton('back', go_back)
+    
+    def request_help(self):
+        print("Help is on the way")
+        message = {
+            "type" : "request_help",
+            "data": {
+                "group" : self.group_name,
+                "task" : self.current_task_text,
+                }
+        }
+        self.send(self.help_topic, message)
 
+    def setup_help_gui(self):
+        def go_back_help():
+            self.send(self.help_topic, {"type": "got_help", "ta": "ta_name", "group_name": self.group_name})
+            self.stm.send("return")
+        
+        self.app.addLabel("Help", )
+        self.app.addButton('Go back', go_back_help)
+        self.app.addButton('Request help', self.request_help)
+
+    def help_gui(self):
+        if self.app is not None:
+            self.app.selectFrame("frames", 2)
+            #self.app.setLabel("Help", "Help is on the way")
 
     def attendance_gui(self):
         if self.app is not None:
@@ -197,6 +283,7 @@ class StudentUISTM:
     def task_gui(self):
         if self.app is not None:
             self.app.selectFrame("frames", 0)
+            self.app.setLabel("Task", self.current_task_text)
 
 
 

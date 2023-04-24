@@ -3,7 +3,6 @@ from typing import Dict, List, Mapping
 import paho.mqtt.client as mqtt
 import logging
 import stmpy
-from class_manager.class_manager.db import Database
 
 from class_manager.config import MQTT_BASE_TOPIC, MQTT_BROKER, MQTT_PORT
 from class_manager.group.group_stm import GroupLogic
@@ -67,8 +66,6 @@ class ClassManagerSTM:
         self.stm_driver = stmpy.Driver()
         self.stm_driver.start(keep_active=True)
         self._logger.debug("Component initialization finished")
-
-        self.db = Database()
 
         self.code = code
 
@@ -160,9 +157,9 @@ class ClassManagerSTM:
 
         self.send(
             self.attendance_status_topic,
-            {"type": "status", "data": {"status": "ok", "name": name}},
+            {"type": "status", "data": {"success": True, "name": name}},
         )
-        # self.list_attendance()
+        self.list_attendance()
 
     def setup_group(self, group_name: str):
         """
@@ -178,21 +175,9 @@ class ClassManagerSTM:
         """
         result = []
         for group in self.groups.items():
-            result.append(f"{group[0]}: {', '.join(group[1].members)}")
+            result.append({f"{group[0]}": group[1].members})
 
         self.send(self.attendance_list_topic, {"type": "list", "data": result})
-
-    def get_task(self, task_nbr: int):
-        """
-        Returns the task with the given task number
-        """
-        total_tasks = self.db.nbr_questions()
-        if task_nbr > total_tasks:
-            task_nbr = 0
-        elif task_nbr < 0:
-            task_nbr = total_tasks - 1
-
-        return self.db.get_question(task_nbr)
 
     def send_statistics(self):
         """

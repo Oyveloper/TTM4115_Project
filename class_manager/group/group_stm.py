@@ -1,9 +1,9 @@
 import paho.mqtt.client as mqtt
 import stmpy
 import logging
-from threading import Thread
 import json
 import time
+from class_manager.class_manager.db import Database
 from class_manager.config import MQTT_BASE_TOPIC, MQTT_BROKER, MQTT_PORT
 
 
@@ -40,7 +40,7 @@ class GroupLogic:
         self.internal_topic = f"{MQTT_BASE_TOPIC}/progress/internal"
 
         # subscribe to proper topic(s) of your choice
-        self.mqtt_client.subscribe(group_topic)
+        self.mqtt_client.subscribe(self.group_topic)
         self.mqtt_client.subscribe(self.help_topic)
 
         # start the internal loop to process MQTT messages
@@ -49,7 +49,7 @@ class GroupLogic:
         # we start the stmpy driver, without any state machines for now
         self.stm_driver = stmpy.Driver()
         self.stm_driver.start(keep_active=True)
-        self._logger.debug('Component initialization finished')
+        self._logger.debug("Component initialization finished")
 
         self.setup_stm()
 
@@ -59,20 +59,19 @@ class GroupLogic:
 
     def start_new_task(self):
         # calculate diff from last
-        duration = time.time() - current_task_start_time
+        duration = time.time() - self.current_task_start_time
         if self.current_task in self.task_times:
-            self.task_times[current_task] += duration
+            self.task_times[self.current_task] += duration
         else:
-            self.task_times[current_task] = duration 
+            self.task_times[self.current_task] = duration
 
         self.current_task_start_time = time.time()
-        message = 'type: progress_update'
-        self.component.mqtt_client.publish(self.internal_topic, message)
+        self.update_class_manager()
 
-    def send(self, topic: str, message: obj):
+    def send(self, topic: str, message: object):
         self.mqtt_client.publish(topic, json.dumps(message))
 
-    def on_message(self, message):
+    def on_message(self, client, userdata, msg):
         """
         Receiving messages on MQTT
         """
@@ -86,28 +85,41 @@ class GroupLogic:
             )
             return
 
-        if message.topic == self.group_topic:
+        if msg.topic == self.group_topic:
             command = payload.get("type")
             if command == "next_task":
                 self.stm.send("next_task")
-                next_task.trigger
 
             elif command == "prev_task":
                 self.stm.send("prev_task")
+            elif command == "request":
+                self.send_current_task()
 
-        if message.topic == self.help_topic:
+        if msg.topic == self.help_topic:
             group = payload.get("group")
             command = payload.get("type")
             if group == self.name:
-                if command == 'request_help':
-                    self.stm.send('ask_for_help')
-                if command == 'offer_help':
-                    self.stm.send('offer_help')
-                if command == 'help_complete':
-                    self.stm.send('help_complete')
+                if command == "request_help":
+                    self.stm.send("ask_for_help")
+                if command == "offer_help":
+                    self.stm.send("offer_help")
+                if command == "help_complete":
+                    self.stm.send("help_complete")
 
+    def get_task(self, task_nbr: int):
+        """
+        Returns the task with the given task number
+        """
+        db = Database()
+        total_tasks = db.nbr_questions()
+        if task_nbr > total_tasks:
+            task_nbr = 0
+        elif task_nbr < 0:
+            task_nbr = total_tasks - 1
 
-    def on_connect(self):
+        return db.get_question(task_nbr)
+
+    def on_connect(self, client, userdata, flags, rc):
         self._logger.info("Connected")
 
     def setup_stm(self):
@@ -116,19 +128,19 @@ class GroupLogic:
             "source": "working",
             "target": "needs_help",
             "trigger": "ask_for_help",
-            "effect": "request_help",
+            "effect": "update_class_manager",
         }
         t2 = {
             "source": "needs_help",
             "target": "getting_help",
             "trigger": "offer_help",
-            "effect": "help_offered",
+            "effect": "update_class_manager",
         }
         t3 = {
             "source": "getting_help",
             "target": "working",
             "trigger": "help_complete",
-            "effect": "help_complete",
+            "effect": "update_class_manager",
         }
 
         t4 = {
@@ -146,42 +158,31 @@ class GroupLogic:
         }
 
         self.stm = stmpy.Machine(
-            name=name, transitions=[t0, t1, t2, t3, t4, t5], obj=self
+            name=self.name, transitions=[t0, t1, t2, t3, t4, t5], obj=self
         )
+
+    def update_class_manager(self):
+        self.send(self.internal_topic, {"type": "progress_update"})
 
     def group_working(self):
         message = f"Group {self.name} is working"
         self._logger.debug(message)
 
-    def request_help(self):
-        message = f"​​​​​type: request_help, group: {self.name}​​​​​​​​​"
-        self._logger.debug(message)
-        self.component.mqtt_client.publish(MQTT_TOPIC_OUTPUT, message)
-
     def help_offered(self):
         message = f"Group {self.name} is getting help"
         self._logger.debug(message)
 
-    def help_complete(self):
-        message = f"​​​​​​​​​​type: help_complete, group: {self.name}​​​​​​​​​"
-        self._logger.debug(message)
-        self.component.mqtt_client.publish(MQTT_TOPIC_OUTPUT, message)
-
     def send_current_task(self):
-        payload = {
-            "team": self.name,
-            "current_task": self.current_task
-        }
-        self.component.mqtt_client.publish('ttm4115/team3/students', json.dumps(payload))
+        task = self.get_task(self.current_task)
+        payload = {"current_task": task}
+        self.send(self.group_task_topic, payload)
 
     def next_task(self):
-        send_current_task()
-        start_new_task()
+        self.start_new_task()
         self.current_task += 1
-        self.class_manager.send_next_task(self.name)
+        self.send_current_task()
 
     def prev_task(self):
-        send_current_task()
-        start_new_task()
+        self.start_new_task()
         self.current_task -= 1
-        self.class_manager.send_prev_task(self.name)
+        self.send_current_task()

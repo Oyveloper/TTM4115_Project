@@ -5,16 +5,18 @@ import stmpy
 import json
 import tkinter
 from appJar import gui
-from class_manager.config import MQTT_BROKER, MQTT_PORT
+from class_manager.config import MQTT_BASE_TOPIC, MQTT_BROKER, MQTT_PORT
 
 
-MQTT_TOPIC_INPUT = 'ttm4115/team3/command'
-MQTT_TOPIC_OUTPUT = 'ttm4115/team3/answer'
 
+
+
+
+# self.mqtt_client.send(f"{GROUP_TOPIC_BASE}/{self.group_name}", json.dumps({"type": "task_view"}))
 
 class InstructorUISTM:
     """
-    The component to send voice commands.
+    The component to send commands.
     """
 
     def on_connect(self, client, userdata, flags, rc):
@@ -22,11 +24,47 @@ class InstructorUISTM:
         self._logger.debug('MQTT connected to {}'.format(client))
 
     def on_message(self, client, userdata, msg):
+        try:
+            payload = json.loads(msg.payload.decode("utf-8"))
+        except Exception as err:
+            self._logger.error('Message sent to topic {} had no valid JSON. Message ignored. {}'.format(msg.topic, err))
+            return
+        
+        if msg.topic == self.group_update_topic:
+            if payload.get("type") == "progress":
+                data = payload.get("data")
+                self.groups_list = ""
+                for group in data:
+                    self.groups_list += f"{group.get('group')}: Task: {group.get('task')}, state: {group.get('state')}\n"
+                self.stm.send("new_group_data")
+
+        if msg.topic == self.statistics_update_topic:
+            if payload.get("type") == "stats":
+                data = payload.get("data")
+                self.statistics_list = ""
+                for task, time in data.items():
+                    self.statistics_list += f"Task: {task}: Time: {time}\n"
+                self.stm.send("new_statistics_data")
+
+        if msg.topic == self.attendance_update_topic:
+            if payload.get("type") == "list":
+                data = payload.get("data")
+                self.attendance_list = ""
+                for student in data:
+                    self.attendance_list += f"{student.get('group')}: Name: {student.get('name')}\n"
+                self.stm.send("new_attendance_data")
+                print("got attendance")
+        
 
         print(msg.payload)
-        pass
+        
 
     def __init__(self):
+        self.instructor_name = ""
+        self.groups_list = ""
+        self.statistics_list = ""
+        self.attendance_list = ""
+
         # get the logger object for the component
         self._logger = logging.getLogger(__name__)
         print('logging under name {}.'.format(__name__))
@@ -40,104 +78,232 @@ class InstructorUISTM:
         self.mqtt_client.on_message = self.on_message
         # Connect to the broker
         self.mqtt_client.connect(MQTT_BROKER, MQTT_PORT)
-        self.mqtt_client.subscribe(MQTT_TOPIC_INPUT)
+
+        self.group_update_topic = f"{MQTT_BASE_TOPIC}/progress"
+        self.statistics_update_topic = f"{MQTT_BASE_TOPIC}/statistics"
+        self.attendance_update_topic = f"{MQTT_BASE_TOPIC}/attendance"
+
+        self.mqtt_client.subscribe(self.group_update_topic)
+        self.mqtt_client.subscribe(self.statistics_update_topic)
+        self.mqtt_client.subscribe(f"{self.attendance_update_topic}")
+
         # start the internal loop to process MQTT messages
         self.mqtt_client.loop_start()
-
 
 
         self.setup_stm()
 
 
-    def show_menu(self):
-        print("menu")
-
-    def show_attendance(self):
-        print("attendance")
-
-    def show_statistics(self):
-        print("statistics")
-
-    def show_group_overview(self):
-        print("group_overview")
-
-
     def setup_stm(self):
+
+        login = {
+            'name': 'login',
+            'entry' : 'login_gui',
+        }
 
         menu = {
             'name': 'menu',
-            'entry': 'show_menu',
+            'entry': 'menu_gui',
         }
 
         display_attendance = {
             'name': 'display_attendance',
-            'entry': 'show_attendance',
+            'entry': 'attendance_gui',
         }
 
         statistics = {
             'name': 'statistics',
-            'entry': 'show_statistics',
+            'entry': 'statistics_gui',
         }
 
         group_overview = {
             'name': 'group_overview',
-            'entry': 'show_group_overview',
+            'entry': 'group_overview_gui',
         }
 
         t0 = {
             'source': 'initial',
-            'target': 'menu',
+            'target': 'login',
         }
 
-        t1 = {
+        t_attendance = {
             'source': 'menu',
             'target': 'display_attendance',
             'trigger': 'display_attendance',
+            'effect' : 'request_attendance_update',
         }
 
-        t2 = {
+        t_return1 = {
             'source': 'display_attendance',
             'target': 'menu',
-            'trigger': 'return'
+            'trigger': 'menu'
             }
 
-        t3 = {
+        t_groups = {
             'source': 'menu',
             'target': 'group_overview',
             'trigger': 'group_overview',
+            'effect': 'request_group_update',
         }
 
-        t4 = {
+        t_return2 = {
             'source': 'group_overview',
             'target': 'menu',
-            'trigger': 'return',
+            'trigger': 'menu',
         }
 
-        t5 = {
+        t_statistics = {
             'source': 'menu',
             'target': 'statistics',
             'trigger': 'statistics',
+            'effect': 'request_statistics_update',
         }
 
-        t6 = {
+        t_return3 = {
             'source': 'statistics',
             'target': 'menu',
-            'trigger': 'return'
+            'trigger': 'menu'
         }
 
+        t_login_menu = {
+            'source' : 'login',
+            'target' : 'menu',
+            'trigger': 'menu'
+        }
+        t_group_group = {
+            'source': 'group_overview',
+            'target': 'group_overview',
+            'trigger': 'new_group_data'
+        }
+
+        t_statistics_statistics = {
+            'source': 'statistics',
+            'target' : 'statistics',
+            'trigger' : 'new_statistics_data',
+        }
+
+        t_attendance_attendance = {
+            'source' : 'display_attendance',
+            'target' : 'display_attendance',
+            'trigger' : 'new_attendance_data',
+        }
+
+        self.stm = stmpy.Machine(name='instructor_ui', transitions=[t0, t_login_menu, t_attendance, t_return1, t_groups, t_return2, t_statistics, t_return3, t_group_group, t_statistics_statistics, t_attendance_attendance], states=[login, menu, display_attendance, statistics, group_overview], obj=self)
 
 
-
-        self.stm = stmpy.Machine(name='faculty_ui', transitions=[t0, t1, t2, t3, t4, t5, t6], states=[menu, display_attendance, statistics, group_overview], obj=self)
-
-    def create_gui(self):
-        self.app = gui()
-        def test():
-            self.stm.send("display_attendance")
-        self.app.addButton('Testing', test)
-        
-
+    def setup_gui(self):
+        self.app = gui("Instructor", "500x500")
+        with self.app.frameStack("frames"):
+            for loop in range(5):
+                with self.app.frame():
+                    if loop == 1:
+                        self.setup_statistics_gui()
+                    elif loop == 2:
+                        self.setup_group_overview_gui()
+                    elif loop == 3:
+                        self.setup_menu_gui()
+                    elif loop == 4:
+                        self.setup_login_gui()
+                    else:
+                        self.setup_attendance_gui()
         self.app.go()
+
+    # div functions
+    def send(self, topic: str, message: object):
+        self.mqtt_client.publish(topic, json.dumps(message))
+
+    def request_group_update(self):
+        self.send(self.group_update_topic, {
+            "type": "request"
+        })
+
+    def request_statistics_update(self):
+        self.send(self.statistics_update_topic, {
+            "type": "request"
+        })
+
+    def request_attendance_update(self):
+        self.send(self.attendance_update_topic, {
+            "type": "get"
+        })
+
+    # View functions
+
+    def login_to_menu_view(self):
+
+        self.instructor_name = self.app.getEntry("name")
+        print(self.instructor_name)
+        self.stm.send("menu")
+
+    def menu_view(self):
+        print("menu view")
+        self.stm.send("menu")
+
+    def attendance_view(self):
+        print("attendance view")
+        self.stm.send("display_attendance")
+
+    def group_overview_view(self):
+        print("group view")
+        self.stm.send("group_overview")
+
+    def statistics_view(self):
+        print("statistics view")
+        self.stm.send("statistics")
+
+
+    # GUIs
+
+    def setup_attendance_gui(self):
+        self.app.addLabel("Attendance")
+        self.app.addLabel("attendance_label", "...")
+        self.app.addButton('Back1', self.menu_view)
+
+    def setup_statistics_gui(self):
+        self.app.addLabel("Statistics")
+        self.app.addLabel("statistics_label", "...")
+        self.app.addButton('Back3', self.menu_view)
+
+    def setup_group_overview_gui(self):
+        self.app.addLabel("Group overview")
+        self.app.addLabel("groups_label", "...")
+        self.app.addButton('Back2', self.menu_view)
+
+    def setup_menu_gui(self):
+    
+        self.app.addButton('Attendance', self.attendance_view)
+        self.app.addButton('Group overview', self.group_overview_view)
+        self.app.addButton('Statistics', self.statistics_view)
+
+    def setup_login_gui(self):
+        self.app.addLabel("Instructor's name")
+        self.app.addEntry("name")
+        self.app.addButton("Login", self.login_to_menu_view)
+
+    # Framestack
+
+    def login_gui(self):
+        if self.app is not None:
+            self.app.selectFrame("frames", 4)
+
+    def menu_gui(self):
+        if self.app is not None:
+            self.app.selectFrame("frames", 3)
+
+    def group_overview_gui(self):
+        if self.app is not None:
+            self.app.selectFrame("frames", 2)
+            self.app.setLabel("groups_label", self.groups_list)
+
+    def statistics_gui(self):
+        if self.app is not None:
+            self.app.selectFrame("frames", 1)
+            self.app.setLabel("statistics_label", self.statistics_list)
+
+    def attendance_gui(self):
+        if self.app is not None:
+            self.app.selectFrame("frames", 0)
+            self.app.setLabel("attendance_label", self.attendance_list)
 
 
     def stop(self):

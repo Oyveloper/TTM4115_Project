@@ -1,4 +1,5 @@
 import json
+from typing import Dict, List, Mapping
 import paho.mqtt.client as mqtt
 import logging
 import stmpy
@@ -72,7 +73,7 @@ class ClassManagerSTM:
         self.code = code
 
         self.attendance = {}
-        self.groups = {}
+        self.groups: Dict[str, GroupLogic] = {}
 
     def send(self, topic: str, message: object):
         self.mqtt_client.publish(topic, json.dumps(message))
@@ -153,12 +154,13 @@ class ClassManagerSTM:
         self.attendance[name] = True
 
         if not group in self.groups:
-            self.groups[group] = {"members": [name]}
             self.setup_group(group)
+
+        self.groups[group].add_member(name)
 
         self.send(
             self.attendance_status_topic,
-            {"type": "status", "data": {"success": True, "name": name}},
+            {"type": "status", "data": {"status": "ok", "name": name}},
         )
         # self.list_attendance()
 
@@ -166,7 +168,7 @@ class ClassManagerSTM:
         """
         Create a group stm
         """
-        group = GroupLogic(group_name, 10, self)
+        group = GroupLogic(group_name, self)
         self.groups[group_name] = group
         self.stm_driver.add_machine(group.stm)
 
@@ -184,6 +186,12 @@ class ClassManagerSTM:
         """
         Returns the task with the given task number
         """
+        total_tasks = self.db.nbr_questions()
+        if task_nbr > total_tasks:
+            task_nbr = 0
+        elif task_nbr < 0:
+            task_nbr = total_tasks - 1
+
         return self.db.get_question(task_nbr)
 
     def send_statistics(self):
@@ -192,7 +200,7 @@ class ClassManagerSTM:
         """
 
         tasks = {}
-        for group in self.groups:
+        for group in self.groups.values():
             for task in group.task_times:
                 if task in tasks:
                     tasks[task] += group.task_times[task]

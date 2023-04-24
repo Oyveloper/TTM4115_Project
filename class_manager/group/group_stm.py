@@ -6,22 +6,26 @@ import json
 import time
 from class_manager.config import MQTT_BASE_TOPIC, MQTT_BROKER, MQTT_PORT
 
+
 class GroupLogic:
     def __init__(self, name: str, class_manager):
         # Internal states
         self.name = name
         self.current_task = 0
-        self.task_times = {} # task nbr -> time 
+        self.task_times = {}  # task nbr -> time
         self.class_manager = class_manager
         self.current_task_start_time = 0
+        self.members = []
 
         # get the logger object for the component
         self._logger = logging.getLogger(__name__)
-        print('logging under name {}.'.format(__name__))
-        self._logger.info('Starting Component')
+        print("logging under name {}.".format(__name__))
+        self._logger.info("Starting Component")
 
         # create a new MQTT client
-        self._logger.debug('Connecting to MQTT broker {} at port {}'.format(MQTT_BROKER, MQTT_PORT))
+        self._logger.debug(
+            "Connecting to MQTT broker {} at port {}".format(MQTT_BROKER, MQTT_PORT)
+        )
         self.mqtt_client = mqtt.Client()
         # callback methods
         self.mqtt_client.on_connect = self.on_connect
@@ -49,6 +53,10 @@ class GroupLogic:
 
         self.setup_stm()
 
+    def add_member(self, name: str):
+        if not name in self.members:
+            self.members.append(name)
+
     def start_new_task(self):
         # calculate diff from last
         duration = time.time() - current_task_start_time
@@ -71,17 +79,21 @@ class GroupLogic:
         try:
             payload = json.loads(msg.payload.decode("utf-8"))
         except Exception as err:
-            self._logger.error('Message sent to topic {} had no valid JSON. Message ignored. {}'.format(msg.topic, err))
+            self._logger.error(
+                "Message sent to topic {} had no valid JSON. Message ignored. {}".format(
+                    msg.topic, err
+                )
+            )
             return
 
         if message.topic == self.group_topic:
             command = payload.get("type")
-            if command == 'next_task':
-                self.stm.send('next_task')
+            if command == "next_task":
+                self.stm.send("next_task")
                 next_task.trigger
 
-            elif command == 'prev_task':
-                self.stm.send('prev_task')
+            elif command == "prev_task":
+                self.stm.send("prev_task")
 
         if message.topic == self.help_topic:
             group = payload.get("group")
@@ -97,42 +109,45 @@ class GroupLogic:
 
     def on_connect(self):
         self._logger.info("Connected")
-        
+
     def setup_stm(self):
-        t0 = {'source': 'initial',
-              'target': 'working',
-              'effect': 'group_working'}
+        t0 = {"source": "initial", "target": "working", "effect": "group_working"}
         t1 = {
-            'source': 'working',
-            'target': 'needs_help',
-            'trigger': 'ask_for_help',
-            'effect': 'request_help'}
+            "source": "working",
+            "target": "needs_help",
+            "trigger": "ask_for_help",
+            "effect": "request_help",
+        }
         t2 = {
-            'source': 'needs_help',
-            'target': 'getting_help',
-            'trigger': 'offer_help',
-            'effect': 'help_offered'}
+            "source": "needs_help",
+            "target": "getting_help",
+            "trigger": "offer_help",
+            "effect": "help_offered",
+        }
         t3 = {
-            'source': 'getting_help',
-            'target': 'working',
-            'trigger': 'help_complete',
-            'effect': 'help_complete'}
+            "source": "getting_help",
+            "target": "working",
+            "trigger": "help_complete",
+            "effect": "help_complete",
+        }
 
         t4 = {
-            'source': 'working',
-            'target': 'working',
-            'trigger': 'next_task',
-            'effect': 'next_task'
+            "source": "working",
+            "target": "working",
+            "trigger": "next_task",
+            "effect": "next_task",
         }
 
         t5 = {
-            'source': 'working',
-            'target': 'working',
-            'trigger': 'prev_task',
-            'effect': 'prev_task'
+            "source": "working",
+            "target": "working",
+            "trigger": "prev_task",
+            "effect": "prev_task",
         }
 
-        self.stm = stmpy.Machine(name=name, transitions=[t0, t1, t2, t3, t4, t5], obj=self)
+        self.stm = stmpy.Machine(
+            name=name, transitions=[t0, t1, t2, t3, t4, t5], obj=self
+        )
 
     def group_working(self):
         message = f"Group {self.name} is working"

@@ -125,6 +125,13 @@ class ClassManagerSTM:
                 # Instructor wants to get latest progress
                 self.send_progress_report()
 
+        elif msg.topic == self.stat_topic:
+            if payload["type"] == "request":
+                self.send_statistics()
+
+        elif msg.topic == self.stat_itnernal_topic:
+            self.send_statistics()
+
     def register_attendance(self, name: str, group: str, code: str):
         """
         Register attendance for a student
@@ -177,6 +184,23 @@ class ClassManagerSTM:
         Returns the task with the given task number
         """
         return self.db.get_question(task_nbr)
+
+    def send_statistics(self):
+        """
+        Sends statistics about task times
+        """
+
+        tasks = {}
+        for group in self.groups:
+            for task in group.task_times:
+                if task in tasks:
+                    tasks[task] += group.task_times[task]
+                else:
+                    tasks[task] = group.task_times[task]
+        for task in tasks:
+            tasks[task] = tasks[task] / len(tasks[task])
+
+        self.send(self.stat_topic, {"type": "stats", "data": tasks})
 
     def send_progress_report(self):
         """

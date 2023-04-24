@@ -4,11 +4,9 @@ from threading import Thread
 import stmpy
 import json
 from appJar import gui
-from class_manager.config import MQTT_BROKER, MQTT_PORT
+from class_manager.config import MQTT_BROKER, MQTT_PORT, MQTT_BASE_TOPIC
 
 
-GROUP_TOPIC_BASE = 'ttm4115/team3'
-MQTT_TOPIC_OUTPUT = 'ttm4115/team3'
 
 
 class StudentUISTM:
@@ -21,6 +19,11 @@ class StudentUISTM:
         self._logger.debug('MQTT connected to {}'.format(client))
 
     def on_message(self, client, userdata, msg):
+        try:
+            payload = json.loads(msg.payload.decode("utf-8"))
+        except Exception as err:
+            self._logger.error('Message sent to topic {} had no valid JSON. Message ignored. {}'.format(msg.topic, err))
+            return
 
         print(msg.payload)
         pass
@@ -39,7 +42,11 @@ class StudentUISTM:
         self.mqtt_client.on_message = self.on_message
         # Connect to the broker
         self.mqtt_client.connect(MQTT_BROKER, MQTT_PORT)
-        self.mqtt_client.subscribe(MQTT_TOPIC_OUTPUT)
+
+        self.attendance_topic = f"{MQTT_BASE_TOPIC}/attendance"
+        self.attendance_status_topic = f"{MQTT_BASE_TOPIC}/attendance/status"
+
+        self.mqtt_client.subscribe(self.attendance_status_topic)
         # start the internal loop to process MQTT messages
         self.mqtt_client.loop_start()
 
@@ -123,6 +130,20 @@ class StudentUISTM:
 
     def register_attendance(self):
         print("trying to send")
+        name = self.app.getEntry("Name")
+        group = self.app.getEntry("Group")
+        code = self.app.getEntry("Code")
+
+        print(name)
+        print(group)
+        print(code)
+        message = {
+            "name": name,
+            "group": group,
+            "code": code
+        }
+        self.mqtt_client.publish(self.attendance_topic, json.dumps(message))
+
         self.stm.send("tasks")
 
     def update_task(self, task: str):
@@ -134,8 +155,12 @@ class StudentUISTM:
             self.stm.send("task_view")
             #self.mqtt_client.send(f"{GROUP_TOPIC_BASE}/{self.group_name}", json.dumps({"type": "task_view"}))
 
+        self.app.addLabel("Name")
         self.app.addEntry("Name")
+        self.app.addLabel("Group")
         self.app.addEntry("Group")
+        self.app.addLabel("Code")
+        self.app.addEntry("Code")
         self.app.addButton('Attendance', self.register_attendance)
 
     def setup_task_gui(self):
@@ -162,15 +187,16 @@ class StudentUISTM:
         self.app.addButton('Previous', previous_task)
         self.app.addButton('Help', request_help)
         self.app.addButton('Current', current_task)
-
         self.app.addButton('back', go_back)
 
 
     def attendance_gui(self):
-        self.app.selectFrame("frames", 1)
+        if self.app is not None:
+            self.app.selectFrame("frames", 1)
 
     def task_gui(self):
-        self.app.selectFrame("frames", 0)
+        if self.app is not None:
+            self.app.selectFrame("frames", 0)
 
 
 

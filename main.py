@@ -1,7 +1,10 @@
 import logging
+from class_manager.class_manager.class_manager import ClassManagerSTM
+from class_manager.class_manager.class_manager_system import ClassManagerSystem
 
 from class_manager.instructor.instructor_system import InstructorSystem
 from class_manager.student.student_system import StudentSystem
+
 
 def main():
     print("hello world")
@@ -10,14 +13,21 @@ def main():
     logger.setLevel(debug_level)
     ch = logging.StreamHandler()
     ch.setLevel(debug_level)
-    formatter = logging.Formatter('%(asctime)s - %(name)-12s - %(levelname)-8s - %(message)s')
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)-12s - %(levelname)-8s - %(message)s"
+    )
     ch.setFormatter(formatter)
     logger.addHandler(ch)
 
     instructor_system = InstructorSystem()
-    student_system = StudentSystem()
-    student_system.run()
-    #instructor_system.run()
+    # student_system = StudentSystem()
+    # student_system.run()
+
+    # instructor_system.run()
+
+    c_syst = ClassManagerSystem()
+    c_syst.run()
+
 
 if __name__ == "__main__":
     main()

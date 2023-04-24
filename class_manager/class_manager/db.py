@@ -1,4 +1,6 @@
 import sqlite3
+
+
 class Question:
     def __init__(self, question, answer):
         self.question = question
@@ -7,12 +9,17 @@ class Question:
 
 class Database:
     def __init__(self):
-        self.db: sqlite3.Connection = sqlite3.connect('questions.db')
+        self.db: sqlite3.Connection = sqlite3.connect("questions.db")
 
-        self.db.execute("CREATE TABLE IF NOT EXISTS questions (question TEXT, answer TEXT)")
+        self.db.execute(
+            "CREATE TABLE IF NOT EXISTS questions (question TEXT, answer TEXT)"
+        )
 
     def add_question(self, question: Question):
-        self.db.execute("INSERT INTO questions (question, answer) VALUES (?, ?)", (question.question, question.answer))
+        self.db.execute(
+            "INSERT INTO questions (question, answer) VALUES (?, ?)",
+            (question.question, question.answer),
+        )
         self.db.commit()
 
     def remove_all_questions(self):
@@ -22,7 +29,6 @@ class Database:
         res = self.db.execute("SELECT COUNT(*) FROM questions")
         count = res.fetchall()
         return count[0][0]
-
 
     def get_question(self, index: int) -> Question:
         res = self.db.execute("SELECT * FROM questions")

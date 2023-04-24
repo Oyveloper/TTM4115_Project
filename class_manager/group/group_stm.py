@@ -14,8 +14,9 @@ class GroupLogic:
         self.current_task = 0
         self.task_times = {}  # task nbr -> time
         self.class_manager = class_manager
-        self.current_task_start_time = 0
+        self.current_task_start_time = time.time()
         self.members = []
+        self.ta = ""
 
         # get the logger object for the component
         self._logger = logging.getLogger(__name__)
@@ -85,39 +86,44 @@ class GroupLogic:
             )
             return
 
-        if msg.topic == self.group_topic:
-            command = payload.get("type")
-            if command == "next_task":
-                self.stm.send("next_task")
+        try:
+            if msg.topic == self.group_topic:
+                command = payload.get("type")
+                if command == "next_task":
+                    self.stm.send("next_task")
 
-            elif command == "prev_task":
-                self.stm.send("prev_task")
-            elif command == "request":
-                self.send_current_task()
+                elif command == "prev_task":
+                    self.stm.send("prev_task")
+                elif command == "request":
+                    self.send_current_task()
 
-        if msg.topic == self.help_topic:
-            group = payload.get("group")
-            command = payload.get("type")
-            if group == self.name:
-                if command == "request_help":
-                    self.stm.send("ask_for_help")
-                if command == "offer_help":
-                    self.stm.send("offer_help")
-                if command == "help_complete":
-                    self.stm.send("help_complete")
+            if msg.topic == self.help_topic:
+                group = payload.get("data").get("group")
+                command = payload.get("type")
+                if group == self.name:
+                    if command == "request_help":
+                        self.stm.send("ask_for_help")
+                    if command == "offer_help":
+                        self.ta = payload.get("data").get("ta")
+                        self.stm.send("offer_help")
+                    if command == "help_complete":
+                        self.ta = ""
+                        self.stm.send("help_complete")
+        except Exception as err:
+            print(err)
 
-    def get_task(self, task_nbr: int):
+    def get_task(self):
         """
         Returns the task with the given task number
         """
         db = Database()
         total_tasks = db.nbr_questions()
-        if task_nbr > total_tasks:
-            task_nbr = 0
-        elif task_nbr < 0:
-            task_nbr = total_tasks - 1
+        if self.current_task == total_tasks:
+            self.current_task = 0
+        elif self.current_task < 0:
+            self.current_task = total_tasks - 1
 
-        return db.get_question(task_nbr)
+        return db.get_question(self.current_task)
 
     def on_connect(self, client, userdata, flags, rc):
         self._logger.info("Connected")
@@ -134,7 +140,7 @@ class GroupLogic:
             "source": "needs_help",
             "target": "getting_help",
             "trigger": "offer_help",
-            "effect": "update_class_manager",
+            "effect": "got_help;update_class_manager",
         }
         t3 = {
             "source": "getting_help",
@@ -157,9 +163,18 @@ class GroupLogic:
             "effect": "prev_task",
         }
 
+        t6 = {"source": "needs_help", "target": "working", "trigger": "help_complete"}
+
         self.stm = stmpy.Machine(
-            name=self.name, transitions=[t0, t1, t2, t3, t4, t5], obj=self
+            name=self.name, transitions=[t0, t1, t2, t3, t4, t5, t6], obj=self
         )
+
+    def got_help(self):
+        message = {
+            "type": "got_help",
+            "data": {"group": self.name, "ta": self.ta},
+        }
+        self.send(self.help_topic, message)
 
     def update_class_manager(self):
         self.send(self.internal_topic, {"type": "progress_update"})
@@ -173,9 +188,10 @@ class GroupLogic:
         self._logger.debug(message)
 
     def send_current_task(self):
-        task = self.get_task(self.current_task)
+        task = self.get_task()
         payload = {"current_task": task}
         self.send(self.group_task_topic, payload)
+        self.update_class_manager()
 
     def next_task(self):
         self.start_new_task()

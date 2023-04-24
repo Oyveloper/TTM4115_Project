@@ -147,6 +147,7 @@ class ClassManagerSTM:
                     },
                 },
             )
+            return
 
         self.attendance[name] = True
 

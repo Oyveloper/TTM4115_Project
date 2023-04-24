@@ -13,46 +13,6 @@ class ClassManagerSTM:
     This STM manages all the groups in the class, and handles some system actions and statistics
     """
 
-    def on_connect(self, client, userdata, flags, rc):
-        # we just log that we are connected
-        self._logger.debug("MQTT connected to {}".format(client))
-
-    def on_message(self, client, userdata, msg):
-        """
-        Processes incoming MQTT messages.
-
-        We assume the payload of all received MQTT messages is an UTF-8 encoded
-        string, which is formatted as a JSON object. The JSON object contains
-        a field called `command` which identifies what the message should achieve.
-
-        As a reaction to a received message, we can for example do the following:
-
-        """
-        self._logger.info("Incoming message to topic {}".format(msg.topic))
-
-        try:
-            payload = json.loads(msg.payload.decode("utf-8"))
-
-        except Exception as err:
-            self._logger.error(
-                "Message sent to topic {} had no valid JSON. Message ignored. {}".format(
-                    msg.topic, err
-                )
-            )
-            return
-
-        if msg.topic == self.attendance_topic:
-            if payload["type"] == "register":
-                data = payload["data"]
-                name = data["name"]
-                code = data["code"]
-                group = data["group"]
-
-                self.register_attendance(name, group, code)
-
-            elif payload["type"] == "get":
-                self.list_attendance()
-
     def __init__(self, code: str):
         """
         Start the component.
@@ -117,6 +77,54 @@ class ClassManagerSTM:
     def send(self, topic: str, message: object):
         self.mqtt_client.publish(topic, json.dumps(message))
 
+    def on_connect(self, client, userdata, flags, rc):
+        # we just log that we are connected
+        self._logger.debug("MQTT connected to {}".format(client))
+
+    def on_message(self, client, userdata, msg):
+        """
+        Processes incoming MQTT messages.
+
+        We assume the payload of all received MQTT messages is an UTF-8 encoded
+        string, which is formatted as a JSON object. The JSON object contains
+        a field called `command` which identifies what the message should achieve.
+
+        As a reaction to a received message, we can for example do the following:
+
+        """
+        self._logger.info("Incoming message to topic {}".format(msg.topic))
+
+        try:
+            payload = json.loads(msg.payload.decode("utf-8"))
+
+        except Exception as err:
+            self._logger.error(
+                "Message sent to topic {} had no valid JSON. Message ignored. {}".format(
+                    msg.topic, err
+                )
+            )
+            return
+
+        if msg.topic == self.attendance_topic:
+            if payload["type"] == "register":
+                data = payload["data"]
+                name = data["name"]
+                code = data["code"]
+                group = data["group"]
+
+                self.register_attendance(name, group, code)
+
+            elif payload["type"] == "get":
+                self.list_attendance()
+
+        elif msg.topic == self.progress_internals_topic:
+            if payload["type"] == "progress_update":
+                self.send_progress_report()
+        elif msg.topic == self.progress_topic:
+            if payload["type"] == "request":
+                # Instructor wants to get latest progress
+                self.send_progress_report()
+
     def register_attendance(self, name: str, group: str, code: str):
         """
         Register attendance for a student
@@ -169,6 +177,16 @@ class ClassManagerSTM:
         Returns the task with the given task number
         """
         return self.db.get_question(task_nbr)
+
+    def send_progress_report(self):
+        """
+        Sends a progress report to the progress topic
+        """
+        progress = []
+        for group in self.groups.items():
+            progress.append({"group": group[0], "progress": group[1].current_task})
+
+        self.send(self.progress_topic, {"type": "progress", "data": progress})
 
     def stop(self):
         """

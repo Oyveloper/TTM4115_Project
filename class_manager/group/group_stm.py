@@ -3,13 +3,17 @@ import stmpy
 import logging
 from threading import Thread
 import json
+import time
 from class_manager.config import MQTT_BASE_TOPIC, MQTT_BROKER, MQTT_PORT
 
 class GroupLogic:
     def __init__(self, name: str, class_manager):
+        # Internal states
         self.name = name
         self.current_task = 0
-        self.class_manager = class_manager()
+        self.task_times = {} # task nbr -> time 
+        self.class_manager = class_manager
+        self.current_task_start_time = 0
 
         # get the logger object for the component
         self._logger = logging.getLogger(__name__)
@@ -33,6 +37,7 @@ class GroupLogic:
         # subscribe to proper topic(s) of your choice
         self.mqtt_client.subscribe(group_topic)
         self.mqtt_client.subscribe(self.help_topic)
+
         # start the internal loop to process MQTT messages
         self.mqtt_client.loop_start()
 
@@ -42,41 +47,76 @@ class GroupLogic:
         self._logger.debug('Component initialization finished')
 
 
-        
+       
+
+
         self.setup_stm()
 
-    def on_message(self, message):
+    def start_new_task(self):
+        # calculate diff from last
+        time = time.time() - current_task_start_time
+        if self.current_task in self.task_times:
+            self.task_times[current_task] += time
+        else:
+            self.task_times[current_task] = time 
 
+        self.current_task_start_time = time.time()
+
+    def send(self, topic: str, message: obj):
+        self.mqtt_client.publish(topic, json.dumps(message))
+
+    def on_message(self, message):
         """
         Receiving messages on MQTT
         """
-        print(message.payload)
+        try:
+            payload = json.loads(msg.payload.decode("utf-8"))
+        except Exception as err:
+            self._logger.error('Message sent to topic {} had no valid JSON. Message ignored. {}'.format(msg.topic, err))
+            return
+
+        if message.topic == self.group_topic:
+            command = payload.get("type")
+            if command == 'next_task':
+                self.stm.send('next_task')
+                next_task.trigger
+
+            elif command == 'prev_task':
+                self.stm.send('prev_task')
+
+        if message.topic == self.help_topic:
+            group = payload.get("group")
+            command = payload.get("type")
+            if group == self.name and command == 'request_help':
+                self.stm.send('ask_for_help')
+            if group == self.name and command == 'offer_help':
+                self.stm.send('offer_help')
+            
+
 
 
     def on_connect(self):
         self._logger.info("Connected")
-
-        # example
-        self.stm.send("offer_help")
         
     def setup_stm(self):
         t0 = {'source': 'initial',
-              'target': 'working'}
+              'target': 'working',
+              'effect': 'group_working'}
         t1 = {
             'source': 'working',
             'target': 'needs_help',
             'trigger': 'ask_for_help',
-            'effect': 'group_working'}
+            'effect': 'request_help'}
         t2 = {
             'source': 'needs_help',
-            'trigger': 'offer_help',
             'target': 'getting_help',
-            'effect': 'request_help'}
+            'trigger': 'offer_help',
+            'effect': 'help_offered'}
         t3 = {
             'source': 'getting_help',
-            'trigger': 'help_complete',
             'target': 'working',
-            'effect': 'help_offered'}
+            'trigger': 'help_complete',
+            'effect': 'help_complete'}
 
         t4 = {
             'source': 'working',
@@ -99,7 +139,7 @@ class GroupLogic:
         self._logger.debug(message)
 
     def request_help(self):
-        message = f"​​​​​​​​​​type: request_help, group: {self.name}​​​​​​​​​"
+        message = f"​​​​​type: request_help, group: {self.name}​​​​​​​​​"
         self._logger.debug(message)
         self.component.mqtt_client.publish(MQTT_TOPIC_OUTPUT, message)
 
@@ -121,10 +161,12 @@ class GroupLogic:
 
     def next_task(self):
         send_current_task()
+        start_new_task()
         self.current_task += 1
         self.class_manager.send_next_task(self.name)
 
     def prev_task(self):
         send_current_task()
+        start_new_task()
         self.current_task -= 1
         self.class_manager.send_prev_task(self.name)

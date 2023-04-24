@@ -48,7 +48,7 @@ class ClassManagerSTM:
         self.stat_topic = f"{MQTT_BASE_TOPIC}/statistics"
         self.stat_itnernal_topic = f"{self.stat_topic}/internal"
 
-        self.attendance_topic = f"{MQTT_BASE_TOPIC}/attendances"
+        self.attendance_topic = f"{MQTT_BASE_TOPIC}/attendance"
         self.attendance_status_topic = f"{self.attendance_topic}/status"
         self.attendance_list_topic = f"{self.attendance_topic}/list"
 
@@ -157,9 +157,10 @@ class ClassManagerSTM:
             self.setup_group(group)
 
         self.send(
-            self.attendance_status_topic, {"type": "status", "data": {"status": "ok"}}
+            self.attendance_status_topic,
+            {"type": "status", "data": {"success": True, "name": name}},
         )
-        self.list_attendance()
+        # self.list_attendance()
 
     def setup_group(self, group_name: str):
         """
@@ -208,7 +209,13 @@ class ClassManagerSTM:
         """
         progress = []
         for group in self.groups.items():
-            progress.append({"group": group[0], "progress": group[1].current_task})
+            progress.append(
+                {
+                    "group": group[0],
+                    "task": group[1].current_task,
+                    "help_status": group[1].stm.state,
+                }
+            )
 
         self.send(self.progress_topic, {"type": "progress", "data": progress})
 

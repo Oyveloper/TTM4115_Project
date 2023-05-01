@@ -6,4 +6,4 @@ from class_manager.instructor.instructor_ui import InstructorUISTM
 
 class ClassManagerSystem:
     def run(self):
-        class_manager = ClassManagerSTM(123)
+        class_manager = ClassManagerSTM("123")

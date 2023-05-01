@@ -1,3 +1,4 @@
 stmpy
 paho-mqtt
 appjar
+click

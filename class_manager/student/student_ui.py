@@ -61,6 +61,7 @@ class StudentUISTM:
             print(e)
 
     def __init__(self):
+        self.app = None
         # get the logger object for the component
         self._logger = logging.getLogger(__name__)
         print('logging under name {}.'.format(__name__))
@@ -111,6 +112,7 @@ class StudentUISTM:
         self.send(self.team_topic, {"type": "request"})
 
     def setup_gui(self):
+        print("GUI time")
         self.app = gui()
         with self.app.frameStack("frames"):
             for loop in range(3):

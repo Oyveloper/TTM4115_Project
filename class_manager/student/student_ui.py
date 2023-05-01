@@ -42,6 +42,20 @@ class StudentUISTM:
                 self.current_task_text = payload.get("current_task")
                 self.stm.send("current_task")
 
+
+            if msg.topic == self.help_topic:
+                group = payload.get("data").get("group")
+                if group != self.group_name:
+                    return 
+                t = payload.get("type")
+                if t == "request_help":
+                    # Update help text
+                    self.help_request()
+                    
+                elif t == "got_help":
+                    self.app.setLabel("Help", "TA is on their way")
+                elif t == "help_complete":
+                    self.help_complete()
             print(msg.payload)
         except Exception as e:
             print(e)
@@ -69,6 +83,7 @@ class StudentUISTM:
 
 
         self.mqtt_client.subscribe(self.attendance_status_topic)
+        self.mqtt_client.subscribe(self.help_topic)
         # start the internal loop to process MQTT messages
         self.mqtt_client.loop_start()
 
@@ -186,8 +201,16 @@ class StudentUISTM:
         }
 
 
+
         self.stm = stmpy.Machine(name='student_ui', transitions=[t0, t1, t2, t3, t4, t5, t6, t7, t8], states=[register_attendance, task, help], obj=self)
 
+
+    def help_request(self):
+        self.app.disableButton("Request help")
+        self.app.setLabel("Help", "Waiting for TA to help you")
+    def help_complete(self):
+        print("enableing button again")
+        self.app.enableButton("Request help")
 
     def register_attendance(self):
         print("trying to send")
@@ -248,7 +271,7 @@ class StudentUISTM:
         self.app.addLabel("Task", self.current_task_text)
         self.app.addButton('Next', next_task)
         self.app.addButton('Previous', previous_task)
-        self.app.addButton('Request Help', help)
+        self.app.addButton('Help', help)
         self.app.addButton('back', go_back)
     
     def request_help(self):
@@ -261,13 +284,15 @@ class StudentUISTM:
                 }
         }
         self.send(self.help_topic, message)
+        
+
 
     def setup_help_gui(self):
         def go_back_help():
-            self.send(self.help_topic, {"type": "got_help", "ta": "ta_name", "group_name": self.group_name})
+            self.send(self.help_topic, {"type": "help_complete", "group_name": self.group_name})
             self.stm.send("return")
         
-        self.app.addLabel("Help", )
+        self.app.addLabel("Help", "...")
         self.app.addButton('Go back', go_back_help)
         self.app.addButton('Request help', self.request_help)
 

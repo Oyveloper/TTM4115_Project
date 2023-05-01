@@ -42,20 +42,41 @@ class StudentUISTM:
                 self.current_task_text = payload.get("current_task")
                 self.stm.send("current_task")
 
+            if msg.topic == self.team_topic:
+                if payload.get("type") == "status_response":
+                    state = payload.get("data").get("state")
+                    if state == "needs_help":
+                        print("NEEDS HELP")
+                        self.help_text == "Waiting for TA to respond"
+                        self.can_request_help = False
+                    elif state == "getting_help":
+                        self.help_text = "TA is on their way"
+                        self.can_request_help = False
+                    else:
+                        self.help_text = ""
+                        self.can_request_help = True
+                    
+                    self.stm.send("help_update")
+
 
             if msg.topic == self.help_topic:
-                group = payload.get("data").get("group")
+                group = payload.get("group")
                 if group != self.group_name:
                     return 
                 t = payload.get("type")
                 if t == "request_help":
                     # Update help text
                     self.help_request()
+                    self.stm.send("help_update")
+                    
                     
                 elif t == "got_help":
-                    self.app.setLabel("Help", "TA is on their way")
+                    self.help_text = "TA is on their way"
+                    self.stm.send("help_update")
                 elif t == "help_complete":
                     self.help_complete()
+                    self.stm.send("help_update")
+                
             print(msg.payload)
         except Exception as e:
             print(e)
@@ -91,6 +112,9 @@ class StudentUISTM:
         self.group_name = ""
         self.name = ""
         self.code = ""
+
+        self.help_text = ""
+        self.can_request_help = True
 
 
         self.current_task_text = "Loading ..."
@@ -193,7 +217,8 @@ class StudentUISTM:
         t7 = {
             'source': 'task',
             'target': 'help',
-            'trigger': 'help'
+            'trigger': 'help',
+            'effect': 'request_help_status'
         }
 
         t8 = {
@@ -202,17 +227,27 @@ class StudentUISTM:
             'trigger': 'return'
         }
 
+        t9 = {
+            'source': 'help',
+            'target': 'help',
+            'trigger': 'help_update'
+        }
 
 
-        self.stm = stmpy.Machine(name='student_ui', transitions=[t0, t1, t2, t3, t4, t5, t6, t7, t8], states=[register_attendance, task, help], obj=self)
+        self.stm = stmpy.Machine(name='student_ui', transitions=[t0, t1, t2, t3, t4, t5, t6, t7, t8, t9], states=[register_attendance, task, help], obj=self)
 
+
+    def request_help_status(self):
+        self.send(self.team_topic, {"type": "status"})
 
     def help_request(self):
-        self.app.disableButton("Request help")
-        self.app.setLabel("Help", "Waiting for TA to help you")
+        self.can_request_help = False
+        self.help_text = "Waiting for TA to help you"
+
+
     def help_complete(self):
-        print("enableing button again")
-        self.app.enableButton("Request help")
+        self.help_text = ""
+        self.can_request_help = True
 
     def register_attendance(self):
         print("trying to send")
@@ -280,18 +315,17 @@ class StudentUISTM:
         print("Help is on the way")
         message = {
             "type" : "request_help",
-            "data": {
-                "group" : self.group_name,
-                "task" : self.current_task_text,
-                }
+            "group" : self.group_name,
+            "task" : self.current_task_text,
         }
         self.send(self.help_topic, message)
         
 
 
     def setup_help_gui(self):
+
         def go_back_help():
-            self.send(self.help_topic, {"type": "help_complete", "group_name": self.group_name})
+            self.send(self.help_topic, {"type": "help_complete", "group": self.group_name})
             self.stm.send("return")
         
         self.app.addLabel("Help", "...")
@@ -299,9 +333,14 @@ class StudentUISTM:
         self.app.addButton('Request help', self.request_help)
 
     def help_gui(self):
+        print("redrawing help gui")
         if self.app is not None:
             self.app.selectFrame("frames", 2)
-            #self.app.setLabel("Help", "Help is on the way")
+            self.app.setLabel("Help", self.help_text)
+            if self.can_request_help:
+                self.app.enableButton("Request help")
+            else:
+                self.app.disableButton("Request help")
 
     def attendance_gui(self):
         if self.app is not None:

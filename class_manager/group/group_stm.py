@@ -96,15 +96,17 @@ class GroupLogic:
                     self.stm.send("prev_task")
                 elif command == "request":
                     self.send_current_task()
+                elif command == "status":
+                    self.send_status()
 
             if msg.topic == self.help_topic:
-                group = payload.get("data").get("group")
+                group = payload.get("group")
                 command = payload.get("type")
                 if group == self.name:
                     if command == "request_help":
                         self.stm.send("ask_for_help")
                     if command == "offer_help":
-                        self.ta = payload.get("data").get("ta")
+                        self.ta = payload.get("ta")
                         self.stm.send("offer_help")
                     if command == "help_complete":
                         self.ta = ""
@@ -169,11 +171,21 @@ class GroupLogic:
             name=self.name, transitions=[t0, t1, t2, t3, t4, t5, t6], obj=self
         )
 
-    def got_help(self):
+    def send_status(self):
         message = {
-            "type": "got_help",
-            "data": {"group": self.name, "ta": self.ta},
+            "type": "status_response",
+            "data": {
+                "group": self.name,
+                "current_task": self.current_task,
+                "state": self.stm.state,
+                "ta": self.ta,
+            },
         }
+
+        self.send(self.group_topic, message)
+
+    def got_help(self):
+        message = {"type": "got_help", "group": self.name, "ta": self.ta}
         self.send(self.help_topic, message)
 
     def update_class_manager(self):

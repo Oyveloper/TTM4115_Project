@@ -20,13 +20,13 @@ def main():
     logger.addHandler(ch)
 
     instructor_system = InstructorSystem()
-    # student_system = StudentSystem()
-    # student_system.run()
+    student_system = StudentSystem()
+    student_system.run()
 
     # instructor_system.run()
 
-    c_syst = ClassManagerSystem()
-    c_syst.run()
+    #c_syst = ClassManagerSystem()
+    #c_syst.run()
 
 
 if __name__ == "__main__":

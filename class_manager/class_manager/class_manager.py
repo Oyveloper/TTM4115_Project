@@ -50,7 +50,7 @@ class ClassManagerSTM:
 
         self.attendance_topic = f"{MQTT_BASE_TOPIC}/attendance"
         self.attendance_status_topic = f"{self.attendance_topic}/status"
-        self.attendance_list_topic = f"{self.attendance_topic}/list"
+        self.attendance_list_topic = f"{self.attendance_topic}"
 
         self.mqtt_client.subscribe(self.progress_internals_topic)
         self.mqtt_client.subscribe(self.progress_topic)
@@ -118,6 +118,7 @@ class ClassManagerSTM:
         elif msg.topic == self.progress_internals_topic:
             if payload["type"] == "progress_update":
                 self.send_progress_report()
+                self.send_statistics()
         elif msg.topic == self.progress_topic:
             if payload["type"] == "request":
                 # Instructor wants to get latest progress
@@ -128,6 +129,7 @@ class ClassManagerSTM:
                 self.send_statistics()
 
         elif msg.topic == self.stat_itnernal_topic:
+            # TODO: remove
             self.send_statistics()
 
     def register_attendance(self, name: str, group: str, code: str):
@@ -161,6 +163,7 @@ class ClassManagerSTM:
             {"type": "status", "data": {"success": True, "name": name}},
         )
         self.list_attendance()
+        self.send_progress_report()
 
     def setup_group(self, group_name: str):
         """
@@ -175,8 +178,9 @@ class ClassManagerSTM:
         Lists attendance to topic
         """
         result = []
-        for group in self.groups.items():
-            result.append({f"{group[0]}": group[1].members})
+        for group in self.groups.values():
+            for member in group.members:
+                result.append({"name": member, "group": group.name})
 
         self.send(self.attendance_list_topic, {"type": "list", "data": result})
 
@@ -186,14 +190,17 @@ class ClassManagerSTM:
         """
 
         tasks = {}
+        task_counter = {}
         for group in self.groups.values():
             for task in group.task_times:
                 if task in tasks:
                     tasks[task] += group.task_times[task]
+                    task_counter[task] += 1
                 else:
                     tasks[task] = group.task_times[task]
+                    task_counter[task] = 1
         for task in tasks:
-            tasks[task] = tasks[task] / len(tasks[task])
+            tasks[task] = tasks[task] / task_counter[task]
 
         self.send(self.stat_topic, {"type": "stats", "data": tasks})
 
@@ -207,7 +214,8 @@ class ClassManagerSTM:
                 {
                     "group": group[0],
                     "task": group[1].current_task,
-                    "help_status": group[1].stm.state,
+                    "state": group[1].stm.state,
+                    "ta": group[1].ta,
                 }
             )
 

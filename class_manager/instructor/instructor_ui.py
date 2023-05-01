@@ -7,11 +7,6 @@ import tkinter
 from appJar import gui
 from class_manager.config import MQTT_BASE_TOPIC, MQTT_BROKER, MQTT_PORT
 
-
-
-
-
-
 # self.mqtt_client.send(f"{GROUP_TOPIC_BASE}/{self.group_name}", json.dumps({"type": "task_view"}))
 
 class InstructorUISTM:
@@ -33,9 +28,9 @@ class InstructorUISTM:
         if msg.topic == self.group_update_topic:
             if payload.get("type") == "progress":
                 data = payload.get("data")
-                self.groups_list = ""
-                for group in data:
-                    self.groups_list += f"{group.get('group')}: Task: {group.get('task')}, state: {group.get('state')}\n"
+                self.groups_list = data
+                
+                        
                 self.stm.send("new_group_data")
 
         if msg.topic == self.statistics_update_topic:
@@ -54,8 +49,6 @@ class InstructorUISTM:
                     self.attendance_list += f"{student.get('group')}: Name: {student.get('name')}\n"
                 self.stm.send("new_attendance_data")
                 print("got attendance")
-        
-
         print(msg.payload)
         
 
@@ -82,10 +75,12 @@ class InstructorUISTM:
         self.group_update_topic = f"{MQTT_BASE_TOPIC}/progress"
         self.statistics_update_topic = f"{MQTT_BASE_TOPIC}/statistics"
         self.attendance_update_topic = f"{MQTT_BASE_TOPIC}/attendance"
+        self.help_topic = f"{MQTT_BASE_TOPIC}/help"
 
         self.mqtt_client.subscribe(self.group_update_topic)
         self.mqtt_client.subscribe(self.statistics_update_topic)
         self.mqtt_client.subscribe(f"{self.attendance_update_topic}")
+        self.mqtt_client.subscribe(self.help_topic)
 
         # start the internal loop to process MQTT messages
         self.mqtt_client.loop_start()
@@ -191,7 +186,7 @@ class InstructorUISTM:
         self.stm = stmpy.Machine(name='instructor_ui', transitions=[t0, t_login_menu, t_attendance, t_return1, t_groups, t_return2, t_statistics, t_return3, t_group_group, t_statistics_statistics, t_attendance_attendance], states=[login, menu, display_attendance, statistics, group_overview], obj=self)
 
 
-    def setup_gui(self):
+    def create_gui(self):
         self.app = gui("Instructor", "500x500")
         with self.app.frameStack("frames"):
             for loop in range(5):
@@ -227,6 +222,11 @@ class InstructorUISTM:
             "type": "get"
         })
 
+    def send_help_group(self, group):
+        self.send(self.help_topic, {
+            "type" : "offer_help", "ta" : self.instructor_name, "group" : group
+        })
+
     # View functions
 
     def login_to_menu_view(self):
@@ -257,20 +257,20 @@ class InstructorUISTM:
     def setup_attendance_gui(self):
         self.app.addLabel("Attendance")
         self.app.addLabel("attendance_label", "...")
-        self.app.addButton('Back1', self.menu_view)
+        self.app.addButton('Back ', self.menu_view)
 
     def setup_statistics_gui(self):
         self.app.addLabel("Statistics")
         self.app.addLabel("statistics_label", "...")
-        self.app.addButton('Back3', self.menu_view)
+        self.app.addButton('Back   ', self.menu_view)
 
     def setup_group_overview_gui(self):
         self.app.addLabel("Group overview")
-        self.app.addLabel("groups_label", "...")
-        self.app.addButton('Back2', self.menu_view)
+        self.app.startFrame("GROUP_LIST")
+        self.app.stopFrame()
+        self.app.addButton('Back  ', self.menu_view)
 
     def setup_menu_gui(self):
-    
         self.app.addButton('Attendance', self.attendance_view)
         self.app.addButton('Group overview', self.group_overview_view)
         self.app.addButton('Statistics', self.statistics_view)
@@ -292,8 +292,21 @@ class InstructorUISTM:
 
     def group_overview_gui(self):
         if self.app is not None:
+            
             self.app.selectFrame("frames", 2)
-            self.app.setLabel("groups_label", self.groups_list)
+            with self.app.frame("GROUP_LIST"):
+                self.app.emptyCurrentContainer()
+                row = 1
+                for i, group in enumerate(self.groups_list):
+                    ta_text = f"({group.get('ta')})" if group.get('state') == "getting_help" else ""
+                    self.app.addLabel(f"Description_{group.get('group')}", f"{group.get('group')}, Task: {group.get('task')}, state: {group.get('state')} {ta_text}", row+i, 0)
+                    def press(btn_title: str):
+                        group_parts = btn_title.split(" ")[1:]
+                        group = " ".join(group_parts)
+                        print(f"Helping {group}")
+                        self.send_help_group(group)
+                    if group.get('state') == "needs_help":
+                        self.app.addButton(f"Help {group.get('group')}", press, row+i, 1)
 
     def statistics_gui(self):
         if self.app is not None:
